@@ -30,27 +30,30 @@ app.post('/api/track-account', async (req, res) => {
     let followers = 0
 
     if (platform === 'ig') {
-      // apify/instagram-profile-scraper — gratuito con i crediti standard
-      const run = await client.actor('apify/instagram-profile-scraper').call({
+      // Step 1: prendi i dati del profilo (followers)
+      const profileRun = await client.actor('apify/instagram-profile-scraper').call({
         usernames: [cleanHandle]
       })
-      const { items } = await client.dataset(run.defaultDatasetId).listItems()
-
-      // Il primo item è il profilo con i post dentro latestPosts
-      const profile = items[0]
-      if (profile) {
-        followers = profile.followersCount || 0
-        const postItems = profile.latestPosts || []
-        rawPosts = postItems.map(p => ({
-          post_id: p.shortCode || p.id,
-          caption: p.caption || '',
-          views: p.videoViewCount || p.likesCount || 0,
-          likes: p.likesCount || 0,
-          comments: p.commentsCount || 0,
-          published_at: p.timestamp || null,
-          thumbnail: p.displayUrl || ''
-        }))
+      const { items: profileItems } = await client.dataset(profileRun.defaultDatasetId).listItems()
+      if (profileItems.length > 0) {
+        followers = profileItems[0].followersCount || 0
       }
+
+      // Step 2: prendi i post con instagram-post-scraper
+      const postsRun = await client.actor('apify/instagram-post-scraper').call({
+        username: [cleanHandle],
+        resultsLimit: 30
+      })
+      const { items: postItems } = await client.dataset(postsRun.defaultDatasetId).listItems()
+      rawPosts = postItems.map(p => ({
+        post_id: p.shortCode || p.id,
+        caption: p.caption || '',
+        views: p.videoViewCount || p.videoPlayCount || p.likesCount || 0,
+        likes: p.likesCount || 0,
+        comments: p.commentsCount || 0,
+        published_at: p.timestamp || null,
+        thumbnail: p.displayUrl || p.thumbnailUrl || ''
+      }))
     }
 
     if (platform === 'tt') {
