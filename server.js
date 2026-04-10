@@ -30,24 +30,27 @@ app.post('/api/track-account', async (req, res) => {
     let followers = 0
 
     if (platform === 'ig') {
-      const run = await client.actor('apify/instagram-scraper').call({
-        usernames: [cleanHandle],
-        resultsLimit: 30,
-        scrapeType: 'posts'
+      // apify/instagram-profile-scraper — gratuito con i crediti standard
+      const run = await client.actor('apify/instagram-profile-scraper').call({
+        usernames: [cleanHandle]
       })
       const { items } = await client.dataset(run.defaultDatasetId).listItems()
-      const profileItem = items.find(i => i.followersCount !== undefined)
-      const postItems = items.filter(i => i.shortCode || (i.id && i.caption !== undefined))
-      followers = profileItem?.followersCount || 0
-      rawPosts = postItems.map(p => ({
-        post_id: p.shortCode || p.id,
-        caption: p.caption || '',
-        views: p.videoViewCount || p.videoPlayCount || p.likesCount || 0,
-        likes: p.likesCount || 0,
-        comments: p.commentsCount || 0,
-        published_at: p.timestamp || null,
-        thumbnail: p.displayUrl || p.thumbnailUrl || ''
-      }))
+
+      // Il primo item è il profilo con i post dentro latestPosts
+      const profile = items[0]
+      if (profile) {
+        followers = profile.followersCount || 0
+        const postItems = profile.latestPosts || []
+        rawPosts = postItems.map(p => ({
+          post_id: p.shortCode || p.id,
+          caption: p.caption || '',
+          views: p.videoViewCount || p.likesCount || 0,
+          likes: p.likesCount || 0,
+          comments: p.commentsCount || 0,
+          published_at: p.timestamp || null,
+          thumbnail: p.displayUrl || ''
+        }))
+      }
     }
 
     if (platform === 'tt') {
@@ -134,8 +137,7 @@ app.post('/api/create-subscription', async (req, res) => {
     const Stripe = require('stripe')
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
     const customer = await stripe.customers.create({
-      email,
-      name,
+      email, name,
       payment_method: paymentMethodId,
       invoice_settings: { default_payment_method: paymentMethodId }
     })
@@ -147,9 +149,7 @@ app.post('/api/create-subscription', async (req, res) => {
     await sb.from('profiles').update({
       stripe_customer_id: customer.id,
       stripe_subscription_id: subscription.id,
-      status: 'trial',
-      plan,
-      billing
+      status: 'trial', plan, billing
     }).eq('id', userId)
     res.status(200).json({ success: true, subscriptionId: subscription.id })
   } catch (err) {
